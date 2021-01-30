@@ -1,0 +1,8 @@
+# path to chained cert file
+CertFile = "/etc/letsencrypt/live/littleroot.org/fullchain.pem"
+
+# path to private key file
+KeyFile = "/etc/letsencrypt/live/littleroot.org/privkey.pem"
+
+# domain to localhost mapping
+Hosts = { "passwords.littleroot.org" = "localhost:52849" }

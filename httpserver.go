@@ -51,7 +51,7 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("decode conf: %s", err)
 	}
 
-	http.HandleFunc("/404", notFoundHandler)
+	http.HandleFunc("/503", temporarilyUnavailable)
 
 	revProxy := httputil.ReverseProxy{
 		Director: multiHostDirector(c.Hosts),
@@ -72,7 +72,7 @@ func run(ctx context.Context) error {
 
 func redirectHTTPS(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/404" {
+		if r.URL.Path == "/503" {
 			h.ServeHTTP(w, r)
 			return
 		}
@@ -99,7 +99,7 @@ func multiHostDirector(hosts map[string]string) func(r *http.Request) {
 			target = *r.URL
 			target.Scheme = "http"
 			target.Host = r.Host
-			target.Path = "/404"
+			target.Path = "/503"
 		}
 
 		r.URL.Scheme = target.Scheme
@@ -109,6 +109,6 @@ func multiHostDirector(hosts map[string]string) func(r *http.Request) {
 	}
 }
 
-func notFoundHandler(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, http.StatusText(404), 404)
+func temporarilyUnavailable(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, http.StatusText(503), 404)
 }

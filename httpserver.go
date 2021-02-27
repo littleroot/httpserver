@@ -60,10 +60,12 @@ func run(ctx context.Context) error {
 	var g errgroup.Group
 
 	g.Go(func() error {
+		log.Printf("listening on :80")
 		return http.ListenAndServe(":80", redirectHTTPS(http.DefaultServeMux))
 	})
 
 	g.Go(func() error {
+		log.Printf("listening on :443")
 		return http.ListenAndServeTLS(":443", c.CertFile, c.KeyFile, &revProxy)
 	})
 

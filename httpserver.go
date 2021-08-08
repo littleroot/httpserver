@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 	"os"
 
 	"github.com/BurntSushi/toml"
@@ -27,6 +26,8 @@ func main() {
 	}
 }
 
+// Conf is the configuration for the program.
+// See conf.toml.example in the repository for details.
 type Conf struct {
 	CertFile string
 	KeyFile  string
@@ -45,72 +46,54 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("%s", err)
 	}
+	defer f.Close()
 
 	var c Conf
 	if _, err := toml.DecodeReader(f, &c); err != nil {
 		return fmt.Errorf("decode conf: %s", err)
 	}
 
-	http.HandleFunc("/503", temporarilyUnavailable)
-
-	revProxy := httputil.ReverseProxy{
-		Director: multiHostDirector(c.Hosts),
-	}
-
 	var g errgroup.Group
 
 	g.Go(func() error {
 		log.Printf("listening on :80")
-		return http.ListenAndServe(":80", redirectHTTPS(http.DefaultServeMux))
+		return http.ListenAndServe(":80", redirectHTTPS(c.Hosts))
 	})
 
 	g.Go(func() error {
 		log.Printf("listening on :443")
-		return http.ListenAndServeTLS(":443", c.CertFile, c.KeyFile, &revProxy)
+		return http.ListenAndServeTLS(":443", c.CertFile, c.KeyFile, &httputil.ReverseProxy{
+			Director: multiHostDirector(c.Hosts),
+		})
 	})
 
 	return g.Wait()
 }
 
-func redirectHTTPS(h http.Handler) http.Handler {
+func redirectHTTPS(hosts map[string]string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/503" {
-			h.ServeHTTP(w, r)
+		// no mapping exists; reject with a 503.
+		if _, ok := hosts[r.Host]; !ok {
+			http.Error(w, http.StatusText(503), 503)
 			return
 		}
+
 		u := *r.URL
 		u.Scheme = "https"
-		u.Host = r.Host
+		u.Host = r.Host // explicitly copy the Host from the Request
 		http.Redirect(w, r, u.String(), http.StatusFound)
 	})
-
 }
 
 func multiHostDirector(hosts map[string]string) func(r *http.Request) {
 	return func(r *http.Request) {
-		var target url.URL
-
-		if v, ok := hosts[r.Host]; ok {
-			target = url.URL{
-				Scheme:   "http",
-				Host:     v,
-				Path:     r.URL.Path,
-				RawQuery: r.URL.RawQuery,
-			}
+		if localHost, ok := hosts[r.Host]; ok {
+			r.URL.Scheme = "https"
+			r.URL.Host = localHost
 		} else {
-			target = *r.URL
-			target.Scheme = "http"
-			target.Host = r.Host
-			target.Path = "/503"
+			// send it to the port 80 handler, which will respond 503 when no mapping
+			// exists.
+			r.URL.Scheme = "http"
 		}
-
-		r.URL.Scheme = target.Scheme
-		r.URL.Host = target.Host
-		r.URL.Path = target.Path
-		r.URL.RawQuery = target.RawQuery
 	}
-}
-
-func temporarilyUnavailable(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, http.StatusText(503), 503)
 }

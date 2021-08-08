@@ -1,8 +1,14 @@
-# path to chained cert file
+# CertFile and KeyFile are the paths to the chained cert file and the
+# private key file for the domains handled by this server.
+#
+# In this example config file, the cert file and private key file should be
+# configured to work for "littleroot.org", "passwords.littleroot.org", and
+# "birthdays.littleroot.org".
 CertFile = "/etc/letsencrypt/live/littleroot.org/fullchain.pem"
-
-# path to private key file
 KeyFile = "/etc/letsencrypt/live/littleroot.org/privkey.pem"
 
-# domain to localhost mapping
-Hosts = { "passwords.littleroot.org" = "localhost:52849" }
+# Hosts maps request hosts -> local server addresses.
+[Hosts]
+"littleroot.org" = "localhost:8000"
+"passwords.littleroot.org" = "localhost:52849"
+"birthdays.litteroot.org" = "localhost:6000"

@@ -57,7 +57,7 @@ func run(ctx context.Context) error {
 
 	g.Go(func() error {
 		log.Printf("listening on :80")
-		return http.ListenAndServe(":80", redirectHTTPS(c.Hosts))
+		return http.ListenAndServe(":80", httpHandler(c.Hosts))
 	})
 
 	g.Go(func() error {
@@ -70,7 +70,7 @@ func run(ctx context.Context) error {
 	return g.Wait()
 }
 
-func redirectHTTPS(hosts map[string]string) http.Handler {
+func httpHandler(hosts map[string]string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// no mapping exists; reject with a 503.
 		if _, ok := hosts[r.Host]; !ok {

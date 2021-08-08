@@ -76,6 +76,7 @@ func httpHandler(hosts map[string]string) http.Handler {
 			return
 		}
 
+		// redirect to https
 		u := *r.URL
 		u.Scheme = "https"
 		u.Host = r.Host // explicitly copy the Host from the Request

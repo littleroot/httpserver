@@ -112,5 +112,5 @@ func multiHostDirector(hosts map[string]string) func(r *http.Request) {
 }
 
 func temporarilyUnavailable(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, http.StatusText(503), 404)
+	http.Error(w, http.StatusText(503), 503)
 }

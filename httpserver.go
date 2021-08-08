@@ -84,6 +84,10 @@ func httpHandler(hosts map[string]string) http.Handler {
 }
 
 func httpsHandler(hosts map[string]string) http.Handler {
+	rev := &httputil.ReverseProxy{
+		Director: multiHostDirector(hosts),
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// no mapping exists; reject with a 503.
 		if _, ok := hosts[r.Host]; !ok {
@@ -91,9 +95,6 @@ func httpsHandler(hosts map[string]string) http.Handler {
 			return
 		}
 
-		rev := &httputil.ReverseProxy{
-			Director: multiHostDirector(hosts),
-		}
 		rev.ServeHTTP(w, r)
 	})
 }

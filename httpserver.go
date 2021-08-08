@@ -62,9 +62,7 @@ func run(ctx context.Context) error {
 
 	g.Go(func() error {
 		log.Printf("listening on :443")
-		return http.ListenAndServeTLS(":443", c.CertFile, c.KeyFile, &httputil.ReverseProxy{
-			Director: multiHostDirector(c.Hosts),
-		})
+		return http.ListenAndServeTLS(":443", c.CertFile, c.KeyFile, httpsHandler(c.Hosts))
 	})
 
 	return g.Wait()
@@ -85,15 +83,28 @@ func httpHandler(hosts map[string]string) http.Handler {
 	})
 }
 
+func httpsHandler(hosts map[string]string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// no mapping exists; reject with a 503.
+		if _, ok := hosts[r.Host]; !ok {
+			http.Error(w, http.StatusText(503), 503)
+			return
+		}
+
+		rev := &httputil.ReverseProxy{
+			Director: multiHostDirector(hosts),
+		}
+		rev.ServeHTTP(w, r)
+	})
+}
+
 func multiHostDirector(hosts map[string]string) func(r *http.Request) {
 	return func(r *http.Request) {
 		if localHost, ok := hosts[r.Host]; ok {
 			r.URL.Scheme = "https"
 			r.URL.Host = localHost
 		} else {
-			// send it to the port 80 handler, which will respond 503 when no mapping
-			// exists.
-			r.URL.Scheme = "http"
+			panic("should not be reached") // indicates code bug
 		}
 	}
 }

@@ -105,7 +105,7 @@ func multiHostDirector(hosts map[string]string) func(r *http.Request) {
 			r.URL.Scheme = "https"
 			r.URL.Host = localHost
 		} else {
-			panic("should not be reached") // indicates code bug
+			panic("unknown host " + r.Host) // should not be reached: indicates code bug
 		}
 	}
 }

@@ -19,10 +19,10 @@ func TestHandler(t *testing.T) {
 	}
 
 	// Prepare local servers.
-	for _, addr := range hosts {
-		addr := addr // capture for closure in HTTP handler
+	for host, addr := range hosts {
+		host, addr := host, addr // capture for closure in HTTP handler
 		ts := httptest.NewUnstartedServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			rw.Write([]byte("response from " + addr))
+			rw.Write([]byte("response from " + addr + " for " + host))
 		}))
 
 		ts.Config.Addr = addr
@@ -159,7 +159,7 @@ func TestHandler(t *testing.T) {
 					return
 				}
 				got := string(b)
-				want := "response from " + localAddr
+				want := "response from " + localAddr + " for " + host
 				if got != want {
 					t.Errorf("body: want %q, got %q", want, got)
 					return

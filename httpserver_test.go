@@ -39,7 +39,7 @@ func TestHandler(t *testing.T) {
 		// (except for setting the value of ts.URL) when ts.Start() is called.
 		// The ts.Listener would have already been set up to listen at
 		// 127.0.0.1:0/:::1:0 by NewUnstartedServer(), and the new ts.Config.Addr
-		// is not used. Worse still, the value of ts.URL would indicate
+		// is not used. Worse still, the value of ts.URL would seem to indicate
 		// that the test server is listening at the modified ts.Config.Addr,
 		// when, in fact, it's not.
 		//

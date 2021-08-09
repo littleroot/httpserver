@@ -34,9 +34,7 @@ func TestHandler(t *testing.T) {
 		//     Start or StartTLS.
 		//
 		//     Addr optionally specifies the TCP address for the server to listen on,
-		//     in the form "host:port". If empty, ":http" (port 80) is used.
-		//     The service names are defined in RFC 6335 and assigned by IANA.
-		//     See net.Dial for details of the address format.
+		//     in the form "host:port".
 		//
 		// Changing the ts.Config.Addr at this point has no effect at all
 		// (except for setting the value of ts.URL) when ts.Start() is called.

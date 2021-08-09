@@ -33,8 +33,7 @@ func TestHandler(t *testing.T) {
 		//     Config may be changed after calling NewUnstartedServer and before
 		//     Start or StartTLS.
 		//
-		//     Addr optionally specifies the TCP address for the server to listen on,
-		//     in the form "host:port".
+		//     Addr optionally specifies the TCP address for the server to listen on [...].
 		//
 		// Changing the ts.Config.Addr at this point has no effect at all
 		// (except for setting the value of ts.URL) when ts.Start() is called.

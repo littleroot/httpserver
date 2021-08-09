@@ -27,11 +27,16 @@ func TestHandler(t *testing.T) {
 		}))
 
 		ts.Config.Addr = addr
-		// It is not sufficient to just replace s.Config.Addr, though the Go doc
+		// It is not sufficient to just replace s.Config.Addr, though the docs
 		// seems to indicate so:
 		//
 		//     Config may be changed after calling NewUnstartedServer and before
 		//     Start or StartTLS.
+		//
+		//     Addr optionally specifies the TCP address for the server to listen on,
+		//     in the form "host:port". If empty, ":http" (port 80) is used.
+		//     The service names are defined in RFC 6335 and assigned by IANA.
+		//     See net.Dial for details of the address format.
 		//
 		// Changing the ts.Config.Addr at this point has no effect at all
 		// (except for setting the value of ts.URL) when ts.Start() is called.

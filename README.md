@@ -20,3 +20,9 @@ httpserver <conf.toml>
 ```
 
 See `conf.toml.example` for an example config file.
+
+## Test
+
+```
+go test -race
+```

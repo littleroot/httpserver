@@ -1,4 +1,4 @@
-cert.pem and key.pem were generated using:
+cert.pem and key.pem were generated using (adapated from net/http/internal):
 
 % cd src/crypto/tls
 % go run generate_cert.go \

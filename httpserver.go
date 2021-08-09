@@ -103,7 +103,7 @@ func httpsHandler(hosts map[string]string) http.Handler {
 func multiHostDirector(hosts map[string]string) func(r *http.Request) {
 	return func(r *http.Request) {
 		if localHost, ok := hosts[r.Host]; ok {
-			r.URL.Scheme = "https"
+			r.URL.Scheme = "http"
 			r.URL.Host = localHost
 		} else {
 			panic("unknown host " + r.Host) // should not be reached: indicates code bug

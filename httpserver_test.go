@@ -135,27 +135,27 @@ func TestHandler(t *testing.T) {
 	})
 
 	t.Run("happy path", func(t *testing.T) {
+		c := s443.Client()
+
+		// the requests should go to the test servers (not e.g. to
+		// actual host of littleroot.org).
+		//
+		// only modify DialContext on the Transport. the field TLSClientConfig, in particular,
+		// has to be preserved since it holds the root CA cert pool
+		// for the self-signed certificates being used.
+		c.Transport.(*http.Transport).DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			var s *httptest.Server
+			if strings.HasSuffix(addr, ":443") {
+				s = s443
+			} else {
+				s = s80
+			}
+			var d net.Dialer
+			return d.DialContext(ctx, s.Listener.Addr().Network(), s.Listener.Addr().String())
+		}
+
 		for host, localAddr := range hosts {
 			t.Run(host, func(t *testing.T) {
-				c := s443.Client()
-
-				// the requests should go to the test servers (not e.g. to
-				// actual host of littleroot.org).
-				//
-				// only modify DialContext on the Transport. the field TLSClientConfig, in particular,
-				// has to be preserved since it holds the root CA cert pool
-				// for the self-signed certificates being used.
-				c.Transport.(*http.Transport).DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-					var s *httptest.Server
-					if strings.HasSuffix(addr, ":443") {
-						s = s443
-					} else {
-						s = s80
-					}
-					var d net.Dialer
-					return d.DialContext(ctx, s.Listener.Addr().Network(), s.Listener.Addr().String())
-				}
-
 				// NOTE: c.Get() follows redirects.
 				rsp, err := c.Get("http://user:pass@" + host + "/path/?key=val#frag")
 				if err != nil {

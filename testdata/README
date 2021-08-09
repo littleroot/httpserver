@@ -1,6 +1,6 @@
-cert.pem and key.pem were generated using (adapated from net/http/internal):
+cert.pem and key.pem were generated using (adapted from net/http/internal):
 
-% cd src/crypto/tls
+% cd src/crypto/tls # in go source tree
 % go run generate_cert.go \
     --rsa-bits 1024 \
     --host 127.0.0.1,::1,littleroot.org,birthdays.littleroot.org,passwords.littleroot.org \

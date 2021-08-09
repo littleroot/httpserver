@@ -8,26 +8,48 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
 func TestHandler(t *testing.T) {
 	hosts := map[string]string{
-		"littleroot.org":           "localhost:8000",
-		"passwords.littleroot.org": "localhost:52849",
-		"birthdays.littleroot.org": "localhost:6000",
+		"littleroot.org":           ":" + getFreePort(),
+		"passwords.littleroot.org": ":" + getFreePort(),
+		"birthdays.littleroot.org": ":" + getFreePort(),
 	}
 
 	// Prepare local servers.
-	for host, addr := range hosts {
-		host := host // capture for closure in HTTP handler
-		s := httptest.NewUnstartedServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			rw.Write([]byte(host))
+	for _, addr := range hosts {
+		addr := addr // capture for closure in HTTP handler
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+			rw.Write([]byte("response from " + addr))
 		}))
-		s.Config.Addr = addr
-		s.Start()
-		defer s.Close()
+
+		ts.Config.Addr = addr
+		// It is not sufficient to just replace s.Config.Addr, though the Go doc
+		// seems to indicate so:
+		//
+		//     Config may be changed after calling NewUnstartedServer and before
+		//     Start or StartTLS.
+		//
+		// Changing the ts.Config.Addr at this point has no effect at all
+		// (except for setting the value of ts.URL) when ts.Start() is called.
+		// The ts.Listener would have already been set up to listen at
+		// 127.0.0.1:0/:::1:0 by NewUnstartedServer(), and the new ts.Config.Addr
+		// is not used. Worse still, the value of ts.URL would indicate
+		// that the test server is listening at the modified ts.Config.Addr,
+		// when, in fact, it's not.
+		//
+		// File an issue with the Go project.
+		l, err := net.Listen("tcp", addr)
+		if err != nil {
+			t.Errorf("failed to listen on %s: %s", addr, err)
+			return
+		}
+		ts.Listener = l
+
+		ts.Start()
+		defer ts.Close()
 	}
 
 	h80 := httpHandler(hosts)
@@ -79,7 +101,7 @@ func TestHandler(t *testing.T) {
 			got := w.Header().Get("location")
 
 			if want != got {
-				t.Errorf("location: want: %s, got: %s", want, got)
+				t.Errorf("location: want %q, got %q", want, got)
 				return
 			}
 
@@ -98,7 +120,7 @@ func TestHandler(t *testing.T) {
 			got := w.Header().Get("location")
 
 			if want != got {
-				t.Errorf("location: want: %s, got: %s", want, got)
+				t.Errorf("location: want %q, got %q", want, got)
 				return
 			}
 
@@ -110,7 +132,7 @@ func TestHandler(t *testing.T) {
 	})
 
 	t.Run("happy path", func(t *testing.T) {
-		for host := range hosts {
+		for host, localAddr := range hosts {
 			t.Run(host, func(t *testing.T) {
 				c := s443.Client()
 				// only modify DialContext. the field TLSClientConfig, in particular,
@@ -118,8 +140,7 @@ func TestHandler(t *testing.T) {
 				// for the self-signed certificates being used.
 				c.Transport.(*http.Transport).DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 					var d net.Dialer
-					addr = strings.TrimPrefix(s443.URL, "https://") // a bit hacky. s443.URL is like "https://127.0.0.1:51678"
-					return d.DialContext(ctx, network, addr)
+					return d.DialContext(ctx, s443.Listener.Addr().Network(), s443.Listener.Addr().String())
 				}
 
 				rsp, err := c.Get("https://user:pass@" + host + "/path/?key=val#frag")
@@ -137,11 +158,30 @@ func TestHandler(t *testing.T) {
 					t.Errorf("unexpected error reading body: %s", err)
 					return
 				}
-				if got := strings.TrimSpace(string(b)); got != host {
-					t.Errorf("body: want: %s, got: %s", host, got)
+				got := string(b)
+				want := "response from " + localAddr
+				if got != want {
+					t.Errorf("body: want %q, got %q", want, got)
 					return
 				}
 			})
 		}
 	})
+}
+
+// https://github.com/facebookarchive/freeport/blob/master/freeport.go
+func getFreePort() (port string) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
+	defer listener.Close()
+
+	addr := listener.Addr().String()
+	_, portString, err := net.SplitHostPort(addr)
+	if err != nil {
+		panic(err)
+	}
+
+	return portString
 }

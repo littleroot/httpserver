@@ -55,15 +55,15 @@ func TestHandler(t *testing.T) {
 	h80 := httpHandler(hosts)
 	h443 := httpsHandler(hosts)
 
+	// load certificate for hosts used in the test
 	cert, err := tls.LoadX509KeyPair(filepath.Join("testdata", "cert.pem"), filepath.Join("testdata", "key.pem"))
 	if err != nil {
 		t.Errorf("failed to load certificate: %s", err)
 		return
 	}
 
-	// No need server for http, where we can invoke the handler directly.
-	// For https the server is necessary to obtain a client that makes
-	// proper TLS requests.
+	// create HTTPS server. used for the happy path test so that the test is
+	// similar to the real world usage.
 	s443 := httptest.NewUnstartedServer(h443)
 	s443.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
 	s443.StartTLS()

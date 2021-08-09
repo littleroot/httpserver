@@ -70,7 +70,7 @@ func run(ctx context.Context) error {
 
 func httpHandler(hosts map[string]string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// no mapping exists; reject with a 503.
+		// if no mapping exists; reject with a 503.
 		if _, ok := hosts[r.Host]; !ok {
 			http.Error(w, http.StatusText(503), 503)
 			return
@@ -86,11 +86,11 @@ func httpHandler(hosts map[string]string) http.Handler {
 
 func httpsHandler(hosts map[string]string) http.Handler {
 	rev := &httputil.ReverseProxy{
-		Director: multiHostDirector(hosts),
+		Director: director(hosts),
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// no mapping exists; reject with a 503.
+		// if no mapping exists; reject with a 503.
 		if _, ok := hosts[r.Host]; !ok {
 			http.Error(w, http.StatusText(503), 503)
 			return
@@ -100,13 +100,27 @@ func httpsHandler(hosts map[string]string) http.Handler {
 	})
 }
 
-func multiHostDirector(hosts map[string]string) func(r *http.Request) {
+// director returns a Director function for use in a reverse proxy.
+// The request is directed to the local server address corresponding
+// to the request's Host header, as defined in the hosts map.
+//
+// The returned Director function must be used only with a request whose Host
+// existe in the hosts map. Otherwise the Director function panics.
+func director(hosts map[string]string) func(r *http.Request) {
 	return func(r *http.Request) {
-		if localHost, ok := hosts[r.Host]; ok {
-			r.URL.Scheme = "http"
-			r.URL.Host = localHost
-		} else {
-			panic("unknown host " + r.Host) // should not be reached: indicates code bug
+		localHost, ok := hosts[r.Host]
+		if !ok {
+			panic("unknown host " + r.Host)
+		}
+
+		r.URL.Scheme = "http"
+		r.URL.Host = localHost
+
+		// copied from NewSingleHostReverseProxy.
+		// https://golang.org/src/net/http/httputil/reverseproxy.go:
+		if _, ok := r.Header["User-Agent"]; !ok {
+			// explicitly disable User-Agent so it's not set to default value
+			r.Header.Set("User-Agent", "")
 		}
 	}
 }

@@ -16,7 +16,7 @@ the server responds with a 503.
 ## Usage
 
 ```
-httpserver [flags] <conf.toml>
+httpserver <conf.toml>
 ```
 
 See `conf.toml.example` for an example config file.

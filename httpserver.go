@@ -14,7 +14,7 @@ import (
 )
 
 func printUsage() {
-	fmt.Fprint(os.Stderr, "usage: httpserver [-http-only] <conf.toml>\n")
+	fmt.Fprint(os.Stderr, "usage: httpserver <conf.toml>\n")
 }
 
 func main() {
@@ -58,9 +58,9 @@ func run(ctx context.Context) error {
 
 	g.Go(func() error {
 		mux := http.NewServeMux()
+		mux.Handle("/", httpHandler(c.Hosts))
 		mux.Handle("/.well-known/", http.StripPrefix("/.well-known/",
 			http.FileServer(http.Dir(c.WellKnown))))
-		mux.Handle("/", httpHandler(c.Hosts))
 
 		log.Printf("listening on :80")
 		return http.ListenAndServe(":80", mux)

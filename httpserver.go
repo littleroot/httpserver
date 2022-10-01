@@ -14,7 +14,7 @@ import (
 )
 
 func printUsage() {
-	fmt.Fprint(os.Stderr, "usage: httpserver <conf.toml>\n")
+	fmt.Fprint(os.Stderr, "usage: httpserver [-http-only] <conf.toml>\n")
 }
 
 func main() {
@@ -29,9 +29,10 @@ func main() {
 // Conf is the configuration for the program.
 // See conf.toml.example in the repository for details.
 type Conf struct {
-	CertFile string
-	KeyFile  string
-	Hosts    map[string]string
+	CertFile  string
+	KeyFile   string
+	WellKnown string
+	Hosts     map[string]string
 }
 
 func run(ctx context.Context) error {
@@ -56,8 +57,13 @@ func run(ctx context.Context) error {
 	var g errgroup.Group
 
 	g.Go(func() error {
+		mux := http.NewServeMux()
+		mux.Handle("/.well-known/", http.StripPrefix("/.well-known/",
+			http.FileServer(http.Dir(c.WellKnown))))
+		mux.Handle("/", httpHandler(c.Hosts))
+
 		log.Printf("listening on :80")
-		return http.ListenAndServe(":80", httpHandler(c.Hosts))
+		return http.ListenAndServe(":80", mux)
 	})
 
 	g.Go(func() error {

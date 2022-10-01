@@ -6,6 +6,7 @@
 # "birthdays.littleroot.org".
 CertFile = "/etc/letsencrypt/live/littleroot.org/fullchain.pem"
 KeyFile = "/etc/letsencrypt/live/littleroot.org/privkey.pem"
+WellKnown = "/home/user/webfiles/.well-known/"
 
 # Hosts maps request hosts -> local server addresses.
 [Hosts]

@@ -1,7 +1,7 @@
 # httpserver
 
 ```
-go get github.com/littleroot/httpserver
+go install github.com/littleroot/httpserver@latest
 ```
 
 The program runs a Go server that listens for HTTP (port 80) and HTTPS (port

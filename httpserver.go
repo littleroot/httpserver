@@ -1,3 +1,4 @@
+// Command httpserver implements a multiple-host HTTP and HTTPS reverse proxy.
 package main
 
 import (
@@ -17,8 +18,11 @@ func printUsage() {
 	fmt.Fprint(os.Stderr, "usage: httpserver <conf.toml>\n")
 }
 
+const programName = "httpserver"
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.SetPrefix(programName + ": ")
 
 	ctx := context.Background()
 	if err := run(ctx); err != nil {
@@ -36,6 +40,7 @@ type Conf struct {
 }
 
 func run(ctx context.Context) error {
+	flag.Usage = printUsage
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -47,27 +52,29 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("%s", err)
 	}
-	defer f.Close()
+	defer f.Close() // ignore error: file opened read-only.
 
 	var c Conf
 	if _, err := toml.DecodeReader(f, &c); err != nil {
 		return fmt.Errorf("decode conf: %s", err)
 	}
+	log.Printf("using config: %#v", c)
 
 	var g errgroup.Group
 
 	g.Go(func() error {
 		mux := http.NewServeMux()
 		mux.Handle("/", httpHandler(c.Hosts))
-		mux.Handle("/.well-known/", http.StripPrefix("/.well-known/",
-			http.FileServer(http.Dir(c.WellKnown))))
+		if c.WellKnown != "" {
+			mux.Handle("/.well-known/", http.StripPrefix("/.well-known/", http.FileServer(http.Dir(c.WellKnown))))
+		}
 
-		log.Printf("listening on :80")
+		log.Printf("listening http on :80")
 		return http.ListenAndServe(":80", mux)
 	})
 
 	g.Go(func() error {
-		log.Printf("listening on :443")
+		log.Printf("listening https on :443")
 		return http.ListenAndServeTLS(":443", c.CertFile, c.KeyFile, httpsHandler(c.Hosts))
 	})
 
@@ -76,9 +83,9 @@ func run(ctx context.Context) error {
 
 func httpHandler(hosts map[string]string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// if no mapping exists; reject with a 503.
+		// if no mapping exists; reject with a 502.
 		if _, ok := hosts[r.Host]; !ok {
-			http.Error(w, http.StatusText(503), 503)
+			http.Error(w, http.StatusText(502), 502)
 			return
 		}
 
@@ -96,9 +103,9 @@ func httpsHandler(hosts map[string]string) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// if no mapping exists; reject with a 503.
+		// if no mapping exists reject with a 502.
 		if _, ok := hosts[r.Host]; !ok {
-			http.Error(w, http.StatusText(503), 503)
+			http.Error(w, http.StatusText(502), 502)
 			return
 		}
 

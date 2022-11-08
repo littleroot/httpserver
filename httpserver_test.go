@@ -14,9 +14,9 @@ import (
 
 func TestHandler(t *testing.T) {
 	hosts := map[string]string{
-		"littleroot.org":           ":" + getFreePort(),
-		"passwords.littleroot.org": ":" + getFreePort(),
-		"birthdays.littleroot.org": ":" + getFreePort(),
+		"littleroot.org": ":" + getFreePort(),
+		"foo.com":        ":" + getFreePort(),
+		"sub.foo.com":    ":" + getFreePort(),
 	}
 
 	// Prepare local servers.
@@ -97,8 +97,8 @@ func TestHandler(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("GET", "http://unknown.org", nil)
 			h80.ServeHTTP(w, r)
-			if w.Code != 503 {
-				t.Errorf("status code: want 503, got %d", w.Code)
+			if w.Code != 502 {
+				t.Errorf("status code: want 502, got %d", w.Code)
 				return
 			}
 		})
@@ -107,8 +107,8 @@ func TestHandler(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("GET", "https://unknown.org", nil)
 			h443.ServeHTTP(w, r)
-			if w.Code != 503 {
-				t.Errorf("status code: want 503, got %d", w.Code)
+			if w.Code != 502 {
+				t.Errorf("status code: want 502, got %d", w.Code)
 				return
 			}
 		})

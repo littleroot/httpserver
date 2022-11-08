@@ -1,15 +1,16 @@
-# CertFile and KeyFile are the paths to the chained cert file and the
+# CertFile and KeyFile are the paths to the cert file and the
 # private key file for the domains handled by this server.
-#
-# In this example config file, the cert file and private key file should be
-# configured to work for "littleroot.org", "passwords.littleroot.org", and
-# "birthdays.littleroot.org".
-CertFile = "/etc/letsencrypt/live/littleroot.org/fullchain.pem"
-KeyFile = "/etc/letsencrypt/live/littleroot.org/privkey.pem"
-WellKnown = "/home/user/webfiles/.well-known/"
+# In this example, you should set up the cert file and private key file
+# to work for littleroot.org, foo.com, sub.foo.com.
+CertFile = "path/to/my.cert.pem"
+KeyFile = "path/to/my.key.pem"
 
-# Hosts maps request hosts -> local server addresses.
+# Optional path to well-known directory. This directory is only served over
+# HTTP. Typically this directory contains ACME challenges to serve.
+WellKnown = "path/to/well-known/"
+
+# Hosts maps request hosts -> internal server addresses.
 [Hosts]
 "littleroot.org" = "localhost:8000"
-"passwords.littleroot.org" = "localhost:52849"
-"birthdays.litteroot.org" = "localhost:6000"
+"foo.com" = "localhost:9000"
+"sub.foo.com" = "localhost:9002"

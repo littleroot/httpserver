@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -15,7 +16,7 @@ import (
 )
 
 func printUsage() {
-	fmt.Fprint(os.Stderr, "usage: httpserver <conf.toml>\n")
+	fmt.Fprintf(os.Stderr, "usage: %s <conf.toml>\n", programName)
 }
 
 const programName = "httpserver"
@@ -39,7 +40,18 @@ type Conf struct {
 	Hosts     map[string]string
 }
 
-func run(ctx context.Context) error {
+func (c Conf) String() string {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "CertFile: %s\n", c.CertFile)
+	fmt.Fprintf(&buf, "KeyFile: %s\n", c.KeyFile)
+	fmt.Fprintf(&buf, "WellKnown: %s\n", c.WellKnown)
+	for k, v := range c.Hosts {
+		fmt.Fprintf(&buf, "Hosts: %s -> %s\n", k, v)
+	}
+	return buf.String()
+}
+
+func run(_ context.Context) error {
 	flag.Usage = printUsage
 	flag.Parse()
 
@@ -48,17 +60,12 @@ func run(ctx context.Context) error {
 		os.Exit(2)
 	}
 
-	f, err := os.Open(flag.Arg(0))
+	c, err := parseConf(flag.Arg(0))
 	if err != nil {
-		return fmt.Errorf("%s", err)
+		return fmt.Errorf("parse conf: %s", err)
 	}
-	defer f.Close() // ignore error: file opened read-only.
-
-	var c Conf
-	if _, err := toml.DecodeReader(f, &c); err != nil {
-		return fmt.Errorf("decode conf: %s", err)
-	}
-	log.Printf("using config: %#v", c)
+	log.Printf("using conf:")
+	fmt.Fprintf(os.Stderr, "%s", c)
 
 	var g errgroup.Group
 
@@ -83,7 +90,7 @@ func run(ctx context.Context) error {
 
 func httpHandler(hosts map[string]string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// if no mapping exists; reject with a 502.
+		// if no mapping exists reject with a 502.
 		if _, ok := hosts[r.Host]; !ok {
 			http.Error(w, http.StatusText(502), 502)
 			return
@@ -92,13 +99,15 @@ func httpHandler(hosts map[string]string) http.Handler {
 		// redirect to https
 		u := *r.URL
 		u.Scheme = "https"
-		u.Host = r.Host // explicitly copy the Host from the Request
+		// explicitly copy host from the request's Host header,
+		// since the Host field of r.URL is typically empty.
+		u.Host = r.Host
 		http.Redirect(w, r, u.String(), http.StatusFound)
 	})
 }
 
 func httpsHandler(hosts map[string]string) http.Handler {
-	rev := &httputil.ReverseProxy{
+	revproxy := &httputil.ReverseProxy{
 		Director: director(hosts),
 	}
 
@@ -109,25 +118,27 @@ func httpsHandler(hosts map[string]string) http.Handler {
 			return
 		}
 
-		rev.ServeHTTP(w, r)
+		revproxy.ServeHTTP(w, r)
 	})
 }
 
-// director returns a Director function for use in a reverse proxy.
-// The request is directed to the local server address corresponding
-// to the request's Host header, as defined in the hosts map.
+// director returns a function that is suitable for use as the
+// Director field of httputil.ReverseProxy. The hosts parameter is a map from
+// known request hosts to internal server addresses. The returned function
+// modifies the request such that a request to a known host is redirected to
+// the appropriate internal server address, based on the hosts map.
 //
-// The returned Director function must be used only with a request whose Host
-// existe in the hosts map. Otherwise the Director function panics.
+// The returned function must be used only with a request whose Host exists in
+// the hosts map. Otherwise the returned function panics.
 func director(hosts map[string]string) func(r *http.Request) {
 	return func(r *http.Request) {
-		localHost, ok := hosts[r.Host]
+		internalHost, ok := hosts[r.Host]
 		if !ok {
 			panic("unknown host " + r.Host)
 		}
 
 		r.URL.Scheme = "http"
-		r.URL.Host = localHost
+		r.URL.Host = internalHost
 
 		// copied from NewSingleHostReverseProxy.
 		// https://golang.org/src/net/http/httputil/reverseproxy.go:
@@ -136,4 +147,15 @@ func director(hosts map[string]string) func(r *http.Request) {
 			r.Header.Set("User-Agent", "")
 		}
 	}
+}
+
+func parseConf(path string) (Conf, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Conf{}, err
+	}
+
+	var c Conf
+	err = toml.Unmarshal(data, &c)
+	return c, err
 }

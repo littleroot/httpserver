@@ -43,7 +43,7 @@ func TestHandler(t *testing.T) {
 		// that the test server is listening at the modified ts.Config.Addr,
 		// when, in fact, it's not.
 		//
-		// File an issue with the Go project.
+		// TODO: File an issue with the Go project.
 		l, err := net.Listen("tcp", addr)
 		if err != nil {
 			t.Errorf("failed to listen on %s: %s", addr, err)

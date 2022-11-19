@@ -109,6 +109,10 @@ func httpHandler(hosts map[string]string) http.Handler {
 func httpsHandler(hosts map[string]string) http.Handler {
 	revproxy := &httputil.ReverseProxy{
 		Director: director(hosts),
+		ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
+			log.Printf("proxy error: %v", err)
+			http.Error(rw, http.StatusText(502), 502)
+		},
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,15 @@
+{
+	"domains": ["littleroot.org", "foo.com", "sub.foo.com"],
+	"proxy": {
+		"littleroot.org": "localhost:8000",
+		"foo.com": "localhost:9000",
+		"sub.foo.com": "localhost:9002"
+	},
+	"certs": {
+		"auto": false,
+		"certFile": "path/to/cert.pem",
+		"keyFile": "path/to/key.pem"
+	},
+	"wellKnown": "path/to/well-known/"
+}
+

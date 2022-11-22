@@ -4,19 +4,25 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"strings"
+	"time"
 
-	"github.com/BurntSushi/toml"
+	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/sync/errgroup"
 )
 
+const renewBefore = 30 * 24 * time.Hour
+
 func printUsage() {
-	fmt.Fprintf(os.Stderr, "usage: %s <conf.toml>\n", programName)
+	fmt.Fprintf(os.Stderr, "usage: %s <conf.json>\n", programName)
 }
 
 const programName = "httpserver"
@@ -31,22 +37,64 @@ func main() {
 	}
 }
 
+func parseConf(path string) (Conf, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Conf{}, err
+	}
+
+	var c Conf
+	err = json.Unmarshal(data, &c)
+	return c, err
+}
+
+func checkConf(c Conf) error {
+	switch {
+	case c.Certs.Auto && c.Certs.CertDir == "":
+		return errors.New("require certs.certDir if certs.auto == true")
+	case !c.Certs.Auto && c.Certs.CertFile == "":
+		return errors.New("require certs.certFile if certs.auto == false")
+	case !c.Certs.Auto && c.Certs.KeyFile == "":
+		return errors.New("require certs.keyFile if certs.auto == false")
+	}
+	return nil
+}
+
 // Conf is the configuration for the program.
-// See conf.toml.example in the repository for details.
 type Conf struct {
-	CertFile  string
-	KeyFile   string
-	WellKnown string
-	Hosts     map[string]string
+	Domains   []string          `json:"domains"`
+	Proxy     map[string]string `json:"proxy"`
+	Certs     Certs             `json:"certs"`
+	WellKnown string            `json:"wellKnown"`
 }
 
 func (c Conf) String() string {
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "CertFile: %s\n", c.CertFile)
-	fmt.Fprintf(&buf, "KeyFile: %s\n", c.KeyFile)
-	fmt.Fprintf(&buf, "WellKnown: %s\n", c.WellKnown)
-	for k, v := range c.Hosts {
-		fmt.Fprintf(&buf, "Hosts: %s -> %s\n", k, v)
+	fmt.Fprintf(&buf, "domains: %s\n", strings.Join(c.Domains, ", "))
+	for k, v := range c.Proxy {
+		fmt.Fprintf(&buf, "proxy: %s -> %s\n", k, v)
+	}
+	fmt.Fprintf(&buf, "%s", c.Certs)
+	fmt.Fprintf(&buf, "well known directory: %s\n", c.WellKnown)
+	return buf.String()
+}
+
+type Certs struct {
+	Auto     bool   `json:"auto"`
+	CertDir  string `json:"certDir"`
+	CertFile string `json:"certFile"`
+	KeyFile  string `json:"keyFile"`
+}
+
+func (c Certs) String() string {
+	var buf bytes.Buffer
+	if c.Auto {
+		fmt.Fprintf(&buf, "certs: automatically managed\n")
+		fmt.Fprintf(&buf, "cert directory: %s\n", c.CertDir)
+	} else {
+		fmt.Fprintf(&buf, "certs: manually managed\n")
+		fmt.Fprintf(&buf, "cert file: %s\n", c.CertFile)
+		fmt.Fprintf(&buf, "key file: %s\n", c.KeyFile)
 	}
 	return buf.String()
 }
@@ -64,6 +112,9 @@ func run(_ context.Context) error {
 	if err != nil {
 		return fmt.Errorf("parse conf: %s", err)
 	}
+	if err := checkConf(c); err != nil {
+		return fmt.Errorf("check conf: %s", err)
+	}
 	log.Printf("using conf:")
 	fmt.Fprintf(os.Stderr, "%s", c)
 
@@ -71,27 +122,50 @@ func run(_ context.Context) error {
 
 	g.Go(func() error {
 		mux := http.NewServeMux()
-		mux.Handle("/", httpHandler(c.Hosts))
+		mux.Handle("/", httpHandler(c.Proxy))
 		if c.WellKnown != "" {
 			mux.Handle("/.well-known/", http.StripPrefix("/.well-known/", http.FileServer(http.Dir(c.WellKnown))))
 		}
-
 		log.Printf("listening http on :80")
 		return http.ListenAndServe(":80", mux)
 	})
 
 	g.Go(func() error {
-		log.Printf("listening https on :443")
-		return http.ListenAndServeTLS(":443", c.CertFile, c.KeyFile, httpsHandler(c.Hosts))
+		var cert, key string
+		var s *http.Server
+
+		if c.Certs.Auto {
+			m := &autocert.Manager{
+				Prompt:      autocert.AcceptTOS,
+				Cache:       autocert.DirCache(c.Certs.CertDir),
+				HostPolicy:  autocert.HostWhitelist(c.Domains...),
+				RenewBefore: renewBefore,
+			}
+			s = &http.Server{
+				Addr:      ":443",
+				Handler:   httpsHandler(c.Proxy),
+				TLSConfig: m.TLSConfig(),
+			}
+		} else {
+			s = &http.Server{
+				Addr:    ":443",
+				Handler: httpsHandler(c.Proxy),
+			}
+			cert = c.Certs.CertFile
+			key = c.Certs.KeyFile
+		}
+
+		log.Printf("listening https on %s", s.Addr)
+		return s.ListenAndServeTLS(cert, key)
 	})
 
 	return g.Wait()
 }
 
-func httpHandler(hosts map[string]string) http.Handler {
+func httpHandler(proxy map[string]string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// if no mapping exists reject with a 502.
-		if _, ok := hosts[r.Host]; !ok {
+		if _, ok := proxy[r.Host]; !ok {
 			http.Error(w, http.StatusText(502), 502)
 			return
 		}
@@ -106,9 +180,9 @@ func httpHandler(hosts map[string]string) http.Handler {
 	})
 }
 
-func httpsHandler(hosts map[string]string) http.Handler {
+func httpsHandler(proxy map[string]string) http.Handler {
 	revproxy := &httputil.ReverseProxy{
-		Director: director(hosts),
+		Director: director(proxy),
 		ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
 			log.Printf("proxy error: %v", err)
 			http.Error(rw, http.StatusText(502), 502)
@@ -117,7 +191,7 @@ func httpsHandler(hosts map[string]string) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// if no mapping exists reject with a 502.
-		if _, ok := hosts[r.Host]; !ok {
+		if _, ok := proxy[r.Host]; !ok {
 			http.Error(w, http.StatusText(502), 502)
 			return
 		}
@@ -127,16 +201,16 @@ func httpsHandler(hosts map[string]string) http.Handler {
 }
 
 // director returns a function that is suitable for use as the
-// Director field of httputil.ReverseProxy. The hosts parameter is a map from
+// Director field of httputil.ReverseProxy. The proxy parameter is a map from
 // known request hosts to internal server addresses. The returned function
 // modifies the request such that a request to a known host is redirected to
-// the appropriate internal server address, based on the hosts map.
+// the appropriate internal server address, based on the proxy map.
 //
 // The returned function must be used only with a request whose Host exists in
-// the hosts map. Otherwise the returned function panics.
-func director(hosts map[string]string) func(r *http.Request) {
+// the proxy map. Otherwise the returned function panics.
+func director(proxy map[string]string) func(r *http.Request) {
 	return func(r *http.Request) {
-		internalHost, ok := hosts[r.Host]
+		internalHost, ok := proxy[r.Host]
 		if !ok {
 			panic("unknown host " + r.Host)
 		}
@@ -151,15 +225,4 @@ func director(hosts map[string]string) func(r *http.Request) {
 			r.Header.Set("User-Agent", "")
 		}
 	}
-}
-
-func parseConf(path string) (Conf, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return Conf{}, err
-	}
-
-	var c Conf
-	err = toml.Unmarshal(data, &c)
-	return c, err
 }

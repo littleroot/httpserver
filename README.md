@@ -23,12 +23,12 @@ HTTP and HTTPS requests respectively.
 The server redirects HTTP requests, except HTTP requests to the
 `/.well-known/` paths, to their equivalent HTTPS URLs. For HTTPS requests the
 server terminates TLS; then based on the incoming request's Host header it
-forwards the request to a corresponding backend server address. The mapping
-from incoming request hosts to backend server addresses is configured in
+forwards the request to a corresponding destination server address. The mapping
+from incoming request hosts to destination server addresses is configured in
 `conf.json`.
 
 If a request is received for a host not configured in `conf.json`, or if
-the backend server for a request is unreachable, the server responds
+the destination server for a request is unreachable, the server responds
 with a 502.
 
 The command can optionally manage TLS certificates for the specified domains
@@ -52,7 +52,7 @@ The config file must contain a JSON object with the following structure.
 
 	// domains is the set of domains served by the command.
 	domains: [string],
-	// proxy is a map from incoming host to the backend server
+	// proxy is a map from incoming host to the destination server
 	// base URL for that host.
 	proxy: { [string]: string },
 	// certs specifies details for TLS certificate.

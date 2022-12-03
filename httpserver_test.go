@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -13,7 +14,7 @@ import (
 	"testing"
 )
 
-func toURLsMust(proxy map[string]string) map[string]url.URL {
+func mustToURLs(proxy map[string]string) map[string]url.URL {
 	m, err := toURLs(proxy)
 	if err != nil {
 		panic(err)
@@ -30,16 +31,22 @@ func TestHandler(t *testing.T) {
 
 	// Prepare local servers.
 	for host, baseURL := range proxy {
-		host, baseURL := host, baseURL // capture for closure in HTTP handler
+		_, baseURL := host, baseURL // capture for closure in HTTP handler
+
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+			u := *r.URL
+			u.Scheme = "http"
+			if username, password, ok := r.BasicAuth(); ok {
+				u.User = url.UserPassword(username, password)
+			}
+			u.Host = r.Host
+			rw.Write([]byte(fmt.Sprintf("response from %s for incoming request %s", baseURL, u.String())))
+		}))
 
 		u, err := url.Parse(baseURL)
 		if err != nil {
 			t.Fatalf("bad baseURL %s: %s", baseURL, err)
 		}
-
-		ts := httptest.NewUnstartedServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			rw.Write([]byte("response from " + baseURL + " for " + host))
-		}))
 
 		ts.Config.Addr = u.Host
 
@@ -71,8 +78,8 @@ func TestHandler(t *testing.T) {
 		defer ts.Close()
 	}
 
-	h80 := httpHandler(toURLsMust(proxy))
-	h443 := httpsHandler(toURLsMust(proxy))
+	h80 := httpHandler(mustToURLs(proxy))
+	h443 := httpsHandler(mustToURLs(proxy))
 
 	// load certificate for hosts used in the test
 	cert, err := tls.LoadX509KeyPair(filepath.Join("testdata", "cert.pem"), filepath.Join("testdata", "key.pem"))
@@ -152,10 +159,10 @@ func TestHandler(t *testing.T) {
 
 		t.Run("preserves remainder of url", func(t *testing.T) {
 			w := httptest.NewRecorder()
-			r := httptest.NewRequest("GET", "http://user:pass@littleroot.org/path/?key=val#frag", nil)
+			r := httptest.NewRequest("GET", "http://user:pass@sub.foo.com/path/?key=val", nil)
 			h80.ServeHTTP(w, r)
 
-			want := "https://user:pass@littleroot.org/path/?key=val#frag"
+			want := "https://user:pass@sub.foo.com/path/?key=val"
 			got := w.Header().Get("location")
 
 			if want != got {
@@ -171,10 +178,14 @@ func TestHandler(t *testing.T) {
 	})
 
 	t.Run("happy path", func(t *testing.T) {
-		for host, baseURL := range proxy {
+		for host, baseURL := range mustToURLs(proxy) {
 			t.Run(host, func(t *testing.T) {
 				// NOTE: Get() follows redirects.
-				rsp, err := s443Client.Get("http://user:pass@" + host + "/path/?key=val#frag")
+				reqPath := "/path/?key=val"
+				reqURL := "http://user:pass@" + host + reqPath
+				serverIncomingReqURL := "http://user:pass@" + host + baseURL.Path + reqPath
+
+				rsp, err := s443Client.Get(reqURL)
 				if err != nil {
 					t.Errorf("want nil error, got %v", err)
 					return
@@ -189,8 +200,9 @@ func TestHandler(t *testing.T) {
 					t.Errorf("unexpected error reading body: %s", err)
 					return
 				}
+
 				got := string(b)
-				want := "response from " + baseURL + " for " + host
+				want := fmt.Sprintf("response from %s for incoming request %s", baseURL.String(), serverIncomingReqURL)
 				if got != want {
 					t.Errorf("body: want %q, got %q", want, got)
 					return

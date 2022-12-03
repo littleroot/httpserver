@@ -195,9 +195,12 @@ func httpHandler(proxy map[string]url.URL) http.Handler {
 		// redirect to https
 		u := *r.URL
 		u.Scheme = "https"
-		// explicitly copy host from the request's Host header for the
-		// redirect, since the Host field of r.URL is typically empty.
+		// explicitly copy necessary fields from the request for the redirect,
+		// since otherwise only Path and RawQuery will be preserved.
 		u.Host = r.Host
+		if username, password, ok := r.BasicAuth(); ok {
+			u.User = url.UserPassword(username, password)
+		}
 		http.Redirect(w, r, u.String(), http.StatusFound)
 	})
 }
@@ -224,24 +227,23 @@ func httpsHandler(proxy map[string]url.URL) http.Handler {
 
 // director returns a function that is suitable for use as the
 // Director field of httputil.ReverseProxy. The proxy parameter is a map from
-// known request hosts to backend server base URLs. The returned function
+// known request hosts to destination server base URLs. The returned function
 // modifies the request such that a request to a known host is redirected to
-// the appropriate backend server base URL, based on the proxy map.
+// the appropriate destination server base URL, based on the proxy map.
 //
 // The returned function must be used only with a request whose Host exists in
 // the proxy map. Otherwise the returned function panics.
 func director(proxy map[string]url.URL) func(r *http.Request) {
 	return func(r *http.Request) {
-		backendURL, ok := proxy[r.Host]
+		destinationURL, ok := proxy[r.Host]
 		if !ok {
 			panic("unknown host " + r.Host)
 		}
 
-		r.URL.Scheme = backendURL.Scheme
-		r.URL.User = backendURL.User
-		r.URL.Host = backendURL.Host
-		if backendURL.Path != "" {
-			r.URL.Path = backendURL.Path + r.URL.Path
+		r.URL.Scheme = destinationURL.Scheme
+		r.URL.Host = destinationURL.Host
+		if destinationURL.Path != "" {
+			r.URL.Path = destinationURL.Path + r.URL.Path
 		}
 
 		// copied from NewSingleHostReverseProxy.

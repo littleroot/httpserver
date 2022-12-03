@@ -25,7 +25,7 @@ func TestHandler(t *testing.T) {
 	proxy := map[string]string{
 		"littleroot.org": "http://:" + getFreePort(),
 		"foo.com":        "http://:" + getFreePort(),
-		"sub.foo.com":    "http://:" + getFreePort(),
+		"sub.foo.com":    "http://:" + getFreePort() + "/foo/sub",
 	}
 
 	// Prepare local servers.

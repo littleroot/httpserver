@@ -195,8 +195,8 @@ func httpHandler(proxy map[string]url.URL) http.Handler {
 		// redirect to https
 		u := *r.URL
 		u.Scheme = "https"
-		// explicitly copy host from the request's Host header,
-		// since the Host field of r.URL is typically empty.
+		// explicitly copy host from the request's Host header for the
+		// redirect, since the Host field of r.URL is typically empty.
 		u.Host = r.Host
 		http.Redirect(w, r, u.String(), http.StatusFound)
 	})

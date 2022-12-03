@@ -7,26 +7,42 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
+func toURLsMust(proxy map[string]string) map[string]url.URL {
+	m, err := toURLs(proxy)
+	if err != nil {
+		panic(err)
+	}
+	return m
+}
+
 func TestHandler(t *testing.T) {
-	hosts := map[string]string{
-		"littleroot.org": ":" + getFreePort(),
-		"foo.com":        ":" + getFreePort(),
-		"sub.foo.com":    ":" + getFreePort(),
+	proxy := map[string]string{
+		"littleroot.org": "http://:" + getFreePort(),
+		"foo.com":        "http://:" + getFreePort(),
+		"sub.foo.com":    "http://:" + getFreePort(),
 	}
 
 	// Prepare local servers.
-	for host, addr := range hosts {
-		host, addr := host, addr // capture for closure in HTTP handler
+	for host, baseURL := range proxy {
+		host, baseURL := host, baseURL // capture for closure in HTTP handler
+
+		u, err := url.Parse(baseURL)
+		if err != nil {
+			t.Fatalf("bad baseURL %s: %s", baseURL, err)
+		}
+
 		ts := httptest.NewUnstartedServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			rw.Write([]byte("response from " + addr + " for " + host))
+			rw.Write([]byte("response from " + baseURL + " for " + host))
 		}))
 
-		ts.Config.Addr = addr
+		ts.Config.Addr = u.Host
+
 		// It is not sufficient to just replace s.Config.Addr, though the docs
 		// seems to indicate so:
 		//
@@ -44,9 +60,9 @@ func TestHandler(t *testing.T) {
 		// when, in fact, it's not.
 		//
 		// TODO: File an issue with the Go project.
-		l, err := net.Listen("tcp", addr)
+		l, err := net.Listen("tcp", u.Host)
 		if err != nil {
-			t.Errorf("failed to listen on %s: %s", addr, err)
+			t.Errorf("failed to listen tcp on %s: %s", u.Host, err)
 			return
 		}
 		ts.Listener = l
@@ -55,8 +71,8 @@ func TestHandler(t *testing.T) {
 		defer ts.Close()
 	}
 
-	h80 := httpHandler(hosts)
-	h443 := httpsHandler(hosts)
+	h80 := httpHandler(toURLsMust(proxy))
+	h443 := httpsHandler(toURLsMust(proxy))
 
 	// load certificate for hosts used in the test
 	cert, err := tls.LoadX509KeyPair(filepath.Join("testdata", "cert.pem"), filepath.Join("testdata", "key.pem"))
@@ -155,7 +171,7 @@ func TestHandler(t *testing.T) {
 	})
 
 	t.Run("happy path", func(t *testing.T) {
-		for host, localAddr := range hosts {
+		for host, baseURL := range proxy {
 			t.Run(host, func(t *testing.T) {
 				// NOTE: Get() follows redirects.
 				rsp, err := s443Client.Get("http://user:pass@" + host + "/path/?key=val#frag")
@@ -174,7 +190,7 @@ func TestHandler(t *testing.T) {
 					return
 				}
 				got := string(b)
-				want := "response from " + localAddr + " for " + host
+				want := "response from " + baseURL + " for " + host
 				if got != want {
 					t.Errorf("body: want %q, got %q", want, got)
 					return

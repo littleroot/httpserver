@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -57,6 +58,9 @@ func checkConf(c Conf) error {
 	case !c.Certs.Auto && c.Certs.KeyFile == "":
 		return errors.New("require certs.keyFile if certs.auto == false")
 	}
+	if _, err := toURLs(c.Proxy); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -77,6 +81,18 @@ func (c Conf) String() string {
 	fmt.Fprintf(&buf, "%s", c.Certs)
 	fmt.Fprintf(&buf, "well known directory: %s\n", c.WellKnown)
 	return buf.String()
+}
+
+func toURLs(proxy map[string]string) (map[string]url.URL, error) {
+	m := make(map[string]url.URL)
+	for k, v := range proxy {
+		u, err := url.Parse(v)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %s", v, err)
+		}
+		m[k] = *u
+	}
+	return m, nil
 }
 
 type Certs struct {
@@ -118,11 +134,17 @@ func run(_ context.Context) error {
 	log.Printf("using conf:")
 	fmt.Fprintf(os.Stderr, "%s", c)
 
+	proxyURLs, err := toURLs(c.Proxy)
+	if err != nil {
+		// should be nil; should have been handled earlier in checkConf.
+		panic(err)
+	}
+
 	var g errgroup.Group
 
 	g.Go(func() error {
 		mux := http.NewServeMux()
-		mux.Handle("/", httpHandler(c.Proxy))
+		mux.Handle("/", httpHandler(proxyURLs))
 		if c.WellKnown != "" {
 			mux.Handle("/.well-known/", http.StripPrefix("/.well-known/", http.FileServer(http.Dir(c.WellKnown))))
 		}
@@ -143,13 +165,13 @@ func run(_ context.Context) error {
 			}
 			s = &http.Server{
 				Addr:      ":443",
-				Handler:   httpsHandler(c.Proxy),
+				Handler:   httpsHandler(proxyURLs),
 				TLSConfig: m.TLSConfig(),
 			}
 		} else {
 			s = &http.Server{
 				Addr:    ":443",
-				Handler: httpsHandler(c.Proxy),
+				Handler: httpsHandler(proxyURLs),
 			}
 			cert = c.Certs.CertFile
 			key = c.Certs.KeyFile
@@ -162,7 +184,7 @@ func run(_ context.Context) error {
 	return g.Wait()
 }
 
-func httpHandler(proxy map[string]string) http.Handler {
+func httpHandler(proxy map[string]url.URL) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// if no mapping exists reject with a 502.
 		if _, ok := proxy[r.Host]; !ok {
@@ -180,7 +202,7 @@ func httpHandler(proxy map[string]string) http.Handler {
 	})
 }
 
-func httpsHandler(proxy map[string]string) http.Handler {
+func httpsHandler(proxy map[string]url.URL) http.Handler {
 	revproxy := &httputil.ReverseProxy{
 		Director: director(proxy),
 		ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
@@ -202,21 +224,25 @@ func httpsHandler(proxy map[string]string) http.Handler {
 
 // director returns a function that is suitable for use as the
 // Director field of httputil.ReverseProxy. The proxy parameter is a map from
-// known request hosts to internal server addresses. The returned function
+// known request hosts to backend server base URLs. The returned function
 // modifies the request such that a request to a known host is redirected to
-// the appropriate internal server address, based on the proxy map.
+// the appropriate backend server base URL, based on the proxy map.
 //
 // The returned function must be used only with a request whose Host exists in
 // the proxy map. Otherwise the returned function panics.
-func director(proxy map[string]string) func(r *http.Request) {
+func director(proxy map[string]url.URL) func(r *http.Request) {
 	return func(r *http.Request) {
-		internalHost, ok := proxy[r.Host]
+		backendURL, ok := proxy[r.Host]
 		if !ok {
 			panic("unknown host " + r.Host)
 		}
 
-		r.URL.Scheme = "http"
-		r.URL.Host = internalHost
+		r.URL.Scheme = backendURL.Scheme
+		r.URL.User = backendURL.User
+		r.URL.Host = backendURL.Host
+		if backendURL.Path != "" {
+			r.URL.Path = backendURL.Path + r.URL.Path
+		}
 
 		// copied from NewSingleHostReverseProxy.
 		// https://golang.org/src/net/http/httputil/reverseproxy.go:

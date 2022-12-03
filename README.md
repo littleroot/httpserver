@@ -9,10 +9,10 @@ go install github.com/littleroot/httpserver@latest
 ```
 
 The command's interface isn't stable yet. To avoid breaking changes, you
-may want to use a specific commit. For example:
+may want to use a specific commit:
 
 ```
-go install github.com/littleroot/httpserver@0fc181a
+go install github.com/littleroot/httpserver@<commithash>
 ```
 
 ## Overview
@@ -21,20 +21,19 @@ The command `httpserver` runs a server that listens on ports 80 and 443 for
 HTTP and HTTPS requests respectively.
 
 The server redirects HTTP requests, except HTTP requests to the
-`/.well-known/` paths, to their equivalent HTTPS URLs.
-
-For HTTPS requests the server terminates TLS; then based on the incoming
-request's Host header it forwards the request to a corresponding internal
-server address. The mapping from incoming request hosts to internal server
-addresses is configured in `conf.json`.
+`/.well-known/` paths, to their equivalent HTTPS URLs. For HTTPS requests the
+server terminates TLS; then based on the incoming request's Host header it
+forwards the request to a corresponding backend server address. The mapping
+from incoming request hosts to backend server addresses is configured in
+`conf.json`.
 
 If a request is received for a host not configured in `conf.json`, or if
-the internal server for a request is unreachable, the server responds
+the backend server for a request is unreachable, the server responds
 with a 502.
 
 The command can optionally manage TLS certificates for the specified domains
 automatically. See the `certs.auto` field in the config. Certificate renewals
-are attempted 30 days before expiry.
+are attempted roughly 30 days before expiry.
 
 ## Usage
 
@@ -53,8 +52,8 @@ The config file must contain a JSON object with the following structure.
 
 	// domains is the set of domains served by the command.
 	domains: [string],
-	// proxy is a map from incoming host to the internal server
-	// address serving that host.
+	// proxy is a map from incoming host to the backend server
+	// base URL for that host.
 	proxy: { [string]: string },
 	// certs specifies details for TLS certificate.
 	certs: {
@@ -65,9 +64,7 @@ The config file must contain a JSON object with the following structure.
 		// certificates and keyfiles.
 		certDir: string
 	} | {
-		// auto specifies whether the command should automatically create
-		// and renew TLS certificates for the domains via Let's Encrypt.
-		auto: false,
+		auto: false, // see documentation above
 		// certFile and keyFile specify paths to the certificate file
 		// and the matching private key file for the domains handled
 		// by this server. They should satisfy all the domains.

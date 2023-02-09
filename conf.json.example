@@ -1,9 +1,13 @@
 {
-	"domains": ["littleroot.org", "foo.com", "sub.foo.com"],
+	"domains": [
+		"littleroot.org",
+		"foo.com",
+		"sub.foo.com"
+	],
 	"proxy": {
 		"littleroot.org": "http://localhost:8000",
 		"foo.com": "http://localhost:9000",
-		"sub.foo.com": "https://external.example.com/foo/sub"
+		"sub.foo.com": "https://external.example.com"
 	},
 	"certs": {
 		"auto": false,

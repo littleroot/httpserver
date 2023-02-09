@@ -195,12 +195,9 @@ func httpHandler(proxy map[string]url.URL) http.Handler {
 		// redirect to https
 		u := *r.URL
 		u.Scheme = "https"
-		// explicitly copy necessary fields from the request for the redirect,
-		// since otherwise only Path and RawQuery will be preserved.
+		// explicitly set Host on the URL, otherwise only Path and
+		// RawQuery will be present.
 		u.Host = r.Host
-		if username, password, ok := r.BasicAuth(); ok {
-			u.User = url.UserPassword(username, password)
-		}
 		http.Redirect(w, r, u.String(), http.StatusFound)
 	})
 }
@@ -239,12 +236,8 @@ func director(proxy map[string]url.URL) func(r *http.Request) {
 		if !ok {
 			panic("unknown host " + r.Host)
 		}
-
 		r.URL.Scheme = destinationURL.Scheme
 		r.URL.Host = destinationURL.Host
-		if destinationURL.Path != "" {
-			r.URL.Path = destinationURL.Path + r.URL.Path
-		}
 
 		// copied from NewSingleHostReverseProxy.
 		// https://golang.org/src/net/http/httputil/reverseproxy.go:

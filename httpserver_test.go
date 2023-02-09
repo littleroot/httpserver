@@ -14,6 +14,10 @@ import (
 	"testing"
 )
 
+var noFollowRedirect = func(_ *http.Request, _ []*http.Request) error {
+	return http.ErrUseLastResponse
+}
+
 func mustToURLs(proxy map[string]string) map[string]url.URL {
 	m, err := toURLs(proxy)
 	if err != nil {
@@ -26,7 +30,7 @@ func TestHandler(t *testing.T) {
 	proxy := map[string]string{
 		"littleroot.org": "http://:" + getFreePort(),
 		"foo.com":        "http://:" + getFreePort(),
-		"sub.foo.com":    "http://:" + getFreePort() + "/foo/sub",
+		"sub.foo.com":    "http://:" + getFreePort(),
 	}
 
 	// Prepare local servers.
@@ -36,9 +40,6 @@ func TestHandler(t *testing.T) {
 		ts := httptest.NewUnstartedServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 			u := *r.URL
 			u.Scheme = "http"
-			if username, password, ok := r.BasicAuth(); ok {
-				u.User = url.UserPassword(username, password)
-			}
 			u.Host = r.Host
 			rw.Write([]byte(fmt.Sprintf("response from %s for incoming request %s", baseURL, u.String())))
 		}))
@@ -139,39 +140,47 @@ func TestHandler(t *testing.T) {
 
 	t.Run("http -> https redirect", func(t *testing.T) {
 		t.Run("basic", func(t *testing.T) {
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("GET", "http://littleroot.org", nil)
-			h80.ServeHTTP(w, r)
+			s443Client.CheckRedirect = noFollowRedirect
+			defer func() {
+				s443Client.CheckRedirect = nil // undo
+			}()
 
-			want := "https://littleroot.org"
-			got := w.Header().Get("location")
+			req, _ := http.NewRequest("GET", "http://littleroot.org", nil)
+			rsp, _ := s443Client.Do(req)
+			defer rsp.Body.Close()
+
+			want := "https://littleroot.org/"
+			got := rsp.Header.Get("location")
 
 			if want != got {
 				t.Errorf("location: want %q, got %q", want, got)
 				return
 			}
-
-			if w.Code != http.StatusFound {
-				t.Errorf("status code: want %d, got %d", http.StatusFound, w.Code)
+			if rsp.StatusCode != http.StatusFound {
+				t.Errorf("status code: want %d, got %d", http.StatusFound, rsp.StatusCode)
 				return
 			}
 		})
 
 		t.Run("preserves remainder of url", func(t *testing.T) {
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("GET", "http://user:pass@sub.foo.com/path/?key=val", nil)
-			h80.ServeHTTP(w, r)
+			s443Client.CheckRedirect = noFollowRedirect
+			defer func() {
+				s443Client.CheckRedirect = nil // undo
+			}()
 
-			want := "https://user:pass@sub.foo.com/path/?key=val"
-			got := w.Header().Get("location")
+			req, _ := http.NewRequest("GET", "http://sub.foo.com/path/?key=val", nil)
+			rsp, _ := s443Client.Do(req)
+			defer rsp.Body.Close()
+
+			want := "https://sub.foo.com/path/?key=val"
+			got := rsp.Header.Get("location")
 
 			if want != got {
 				t.Errorf("location: want %q, got %q", want, got)
 				return
 			}
-
-			if w.Code != http.StatusFound {
-				t.Errorf("status code: want %d, got %d", http.StatusFound, w.Code)
+			if rsp.StatusCode != http.StatusFound {
+				t.Errorf("status code: want %d, got %d", http.StatusFound, rsp.StatusCode)
 				return
 			}
 		})
@@ -180,10 +189,9 @@ func TestHandler(t *testing.T) {
 	t.Run("happy path", func(t *testing.T) {
 		for host, baseURL := range mustToURLs(proxy) {
 			t.Run(host, func(t *testing.T) {
-				// NOTE: Get() follows redirects.
+				// NOTE: http.Get follows redirects.
 				reqPath := "/path/?key=val"
-				reqURL := "http://user:pass@" + host + reqPath
-				serverIncomingReqURL := "http://user:pass@" + host + baseURL.Path + reqPath
+				reqURL := "http://" + host + reqPath
 
 				rsp, err := s443Client.Get(reqURL)
 				if err != nil {
@@ -202,7 +210,7 @@ func TestHandler(t *testing.T) {
 				}
 
 				got := string(b)
-				want := fmt.Sprintf("response from %s for incoming request %s", baseURL.String(), serverIncomingReqURL)
+				want := fmt.Sprintf("response from %s for incoming request %s", baseURL.String(), reqURL)
 				if got != want {
 					t.Errorf("body: want %q, got %q", want, got)
 					return

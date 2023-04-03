@@ -50,13 +50,14 @@ func parseConf(path string) (Conf, error) {
 }
 
 func checkConf(c Conf) error {
-	switch {
-	case c.Certs.Auto && c.Certs.CertDir == "":
-		return errors.New("require certs.certDir if certs.auto == true")
-	case !c.Certs.Auto && c.Certs.CertFile == "":
-		return errors.New("require certs.certFile if certs.auto == false")
-	case !c.Certs.Auto && c.Certs.KeyFile == "":
-		return errors.New("require certs.keyFile if certs.auto == false")
+	if c.Certs.Auto && c.Certs.CertDir == "" {
+		return errors.New("require certs.certDir when certs.auto == true")
+	}
+	if !c.Certs.Auto && c.Certs.CertFile == "" {
+		return errors.New("require certs.certFile when certs.auto == false")
+	}
+	if !c.Certs.Auto && c.Certs.KeyFile == "" {
+		return errors.New("require certs.keyFile when certs.auto == false")
 	}
 	if _, err := toURLs(c.Proxy); err != nil {
 		return err

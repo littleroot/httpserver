@@ -205,7 +205,7 @@ func httpHandler(proxy map[string]url.URL) http.Handler {
 
 func httpsHandler(proxy map[string]url.URL) http.Handler {
 	revproxy := &httputil.ReverseProxy{
-		Director: director(proxy),
+		Rewrite: rewriter(proxy),
 		ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
 			log.Printf("proxy error: %v", err)
 			http.Error(rw, http.StatusText(502), 502)
@@ -218,33 +218,26 @@ func httpsHandler(proxy map[string]url.URL) http.Handler {
 			http.Error(w, http.StatusText(502), 502)
 			return
 		}
-
 		revproxy.ServeHTTP(w, r)
 	})
 }
 
-// director returns a function that is suitable for use as the
-// Director field of httputil.ReverseProxy. The proxy parameter is a map from
+// rewriter returns a function that is suitable for use as the
+// Rewriter field of httputil.ReverseProxy. The proxy parameter is a map from
 // known request hosts to destination server base URLs. The returned function
 // modifies the request such that a request to a known host is redirected to
 // the appropriate destination server base URL, based on the proxy map.
 //
 // The returned function must be used only with a request whose Host exists in
 // the proxy map. Otherwise the returned function panics.
-func director(proxy map[string]url.URL) func(r *http.Request) {
-	return func(r *http.Request) {
-		destinationURL, ok := proxy[r.Host]
+func rewriter(proxy map[string]url.URL) func(*httputil.ProxyRequest) {
+	return func(pr *httputil.ProxyRequest) {
+		dest, ok := proxy[pr.In.Host]
 		if !ok {
-			panic("unknown host " + r.Host)
+			panic("unknown host " + pr.In.Host)
 		}
-		r.URL.Scheme = destinationURL.Scheme
-		r.URL.Host = destinationURL.Host
-
-		// copied from NewSingleHostReverseProxy.
-		// https://golang.org/src/net/http/httputil/reverseproxy.go:
-		if _, ok := r.Header["User-Agent"]; !ok {
-			// explicitly disable User-Agent so it's not set to default value
-			r.Header.Set("User-Agent", "")
-		}
+		pr.SetURL(&dest)
+		pr.Out.Host = pr.In.Host
+		pr.SetXForwarded()
 	}
 }

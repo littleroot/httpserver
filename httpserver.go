@@ -2,7 +2,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,7 +12,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"golang.org/x/crypto/acme/autocert"
@@ -29,8 +27,7 @@ func printUsage() {
 const programName = "httpserver"
 
 func main() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.SetPrefix(programName + ": ")
+	log.SetFlags(0)
 
 	ctx := context.Background()
 	if err := run(ctx); err != nil {
@@ -73,17 +70,6 @@ type Conf struct {
 	WellKnown string            `json:"wellKnown"`
 }
 
-func (c Conf) String() string {
-	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "domains: %s\n", strings.Join(c.Domains, ", "))
-	for k, v := range c.Proxy {
-		fmt.Fprintf(&buf, "proxy: %s -> %s\n", k, v)
-	}
-	fmt.Fprintf(&buf, "%s", c.Certs)
-	fmt.Fprintf(&buf, "well known directory: %s\n", c.WellKnown)
-	return buf.String()
-}
-
 func toURLs(proxy map[string]string) (map[string]url.URL, error) {
 	m := make(map[string]url.URL)
 	for k, v := range proxy {
@@ -103,19 +89,6 @@ type Certs struct {
 	KeyFile  string `json:"keyFile"`
 }
 
-func (c Certs) String() string {
-	var buf bytes.Buffer
-	if c.Auto {
-		fmt.Fprintf(&buf, "certs: automatically managed\n")
-		fmt.Fprintf(&buf, "cert directory: %s\n", c.CertDir)
-	} else {
-		fmt.Fprintf(&buf, "certs: manually managed\n")
-		fmt.Fprintf(&buf, "cert file: %s\n", c.CertFile)
-		fmt.Fprintf(&buf, "key file: %s\n", c.KeyFile)
-	}
-	return buf.String()
-}
-
 func run(_ context.Context) error {
 	flag.Usage = printUsage
 	flag.Parse()
@@ -132,8 +105,6 @@ func run(_ context.Context) error {
 	if err := checkConf(c); err != nil {
 		return fmt.Errorf("check conf: %s", err)
 	}
-	log.Printf("using conf:")
-	fmt.Fprintf(os.Stderr, "%s", c)
 
 	proxyURLs, err := toURLs(c.Proxy)
 	if err != nil {

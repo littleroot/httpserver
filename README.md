@@ -12,7 +12,7 @@ The command's interface isn't stable yet. To avoid breaking changes, you
 may want to use a specific commit:
 
 ```
-go install github.com/littleroot/httpserver@<commithash>
+go install github.com/littleroot/httpserver@<commit>
 ```
 
 ## Overview
@@ -21,11 +21,11 @@ The command `httpserver` runs a server that listens on ports 80 and 443 for
 HTTP and HTTPS requests respectively.
 
 The server redirects HTTP requests, except HTTP requests to the
-`/.well-known/` paths, to their equivalent HTTPS URLs. For HTTPS requests the
-server terminates TLS; then based on the incoming request's Host header it
-forwards the request to a corresponding destination server address. The mapping
-from incoming request hosts to destination server addresses is configured in
-`conf.json`.
+`/.well-known/acme-challenge/` paths, to their equivalent HTTPS URLs. For HTTPS
+requests the server terminates TLS; then based on the incoming request's Host
+header it forwards the request to a corresponding destination server address.
+The mapping from incoming request hosts to destination server addresses is
+configured in `conf.json`.
 
 If a request is received for a host not configured in `conf.json`, or if
 the destination server for a request is unreachable, the server responds
@@ -71,11 +71,9 @@ The config file must contain a JSON object with the following structure.
 		certFile: string,
 		keyFile: string
 	},
-	// wellKnown specifies an optional directory to serve over HTTP at
-	// at the URL /.well-known/. Typically one of its subdirectories contains
-	// ACME challenges to serve; this tends to be useful when manually
-	// creating certificates.
-	wellKnown: string
+	// acmeChallenge specifies an optional directory to serve over HTTP at
+	// at the path /.well-known/acme-challenge/.
+	acmeChallenge: string
 }
 ```
 

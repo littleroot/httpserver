@@ -64,10 +64,10 @@ func checkConf(c Conf) error {
 
 // Conf is the configuration for the program.
 type Conf struct {
-	Domains   []string          `json:"domains"`
-	Proxy     map[string]string `json:"proxy"`
-	Certs     Certs             `json:"certs"`
-	WellKnown string            `json:"wellKnown"`
+	Domains       []string          `json:"domains"`
+	Proxy         map[string]string `json:"proxy"`
+	Certs         Certs             `json:"certs"`
+	AcmeChallenge string            `json:"acmeChallenge"`
 }
 
 func toURLs(proxy map[string]string) (map[string]url.URL, error) {
@@ -117,8 +117,8 @@ func run(_ context.Context) error {
 	g.Go(func() error {
 		mux := http.NewServeMux()
 		mux.Handle("/", httpHandler(proxyURLs))
-		if c.WellKnown != "" {
-			mux.Handle("/.well-known/", http.StripPrefix("/.well-known/", http.FileServer(http.Dir(c.WellKnown))))
+		if c.AcmeChallenge != "" {
+			mux.Handle("/.well-known/acme-challenge/", http.StripPrefix("/.well-known/acme-challenge/", http.FileServer(http.Dir(c.AcmeChallenge))))
 		}
 		log.Printf("listening http on :80")
 		return http.ListenAndServe(":80", mux)
